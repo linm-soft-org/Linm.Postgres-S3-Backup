@@ -1,0 +1,169 @@
+name: Publish Docker images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_at_current_version:
+        description: Tag latest semver (skip bump)
+        type: boolean
+        default: false
+      version:
+        description: Explicit semver X.Y.Z (optional)
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pick-runner:
+    name: pick-runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/pick-linm-runner
+        id: pick
+        with:
+          gh_token: ${{ secrets.LINM_SOFT_READ_TOKEN }}
+
+  resolve-version:
+    name: resolve-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      source: ${{ steps.version.outputs.source }}
+      bump_kind: ${{ steps.version.outputs.bump_kind }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
+          PUBLISH_VERSION: ${{ github.event.inputs.version || '' }}
+          PUBLISH_AT_CURRENT_VERSION: ${{ github.event.inputs.publish_at_current_version && '1' || '' }}
+        run: |
+          chmod +x .github/scripts/resolve-publish-version.sh
+          LATEST="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -1 || true)"
+          if [ -z "$LATEST" ]; then
+            echo "version=1.0.0" >> "$GITHUB_OUTPUT"
+            echo "source=first" >> "$GITHUB_OUTPUT"
+            echo "bump_kind=initial" >> "$GITHUB_OUTPUT"
+            echo "First release → 1.0.0"
+          else
+            export CURRENT="${LATEST#v}"
+            .github/scripts/resolve-publish-version.sh
+          fi
+
+  build-and-push-image:
+    needs: [pick-runner, resolve-version]
+    name: build-and-push-image
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
+
+    strategy:
+      matrix:
+        include:
+          - { postgres: 14 }
+          - { postgres: 15 }
+          - { postgres: 16 }
+          - { postgres: 17 }
+          - { postgres: 18 }
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.postgres }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: |
+            POSTGRES_VERSION=${{ matrix.postgres }}
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  create-release-tag:
+    needs: [resolve-version, build-and-push-image]
+    name: create-release-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard release tag
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.version }}"
+          if git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            existing="$(git rev-parse "refs/tags/v${VERSION}")"
+            echo "::error::Tag v${VERSION} already exists at ${existing}. Use workflow_dispatch with publish_at_current_version or an explicit version."
+            exit 1
+          fi
+
+      - name: Create and push release tag
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "chore: release ${VERSION} [skip ci]"
+          git push origin "v${VERSION}"
+
+      - name: Release summary
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.version }}"
+          {
+            echo "## Release v${VERSION}"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Bump | ${{ needs.resolve-version.outputs.bump_kind }} |"
+            echo "| Images | \`ghcr.io/${{ github.repository }}:{14\|15\|16\|17\|18}\` |"
+            echo "| Git tag | \`v${VERSION}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

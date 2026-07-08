@@ -1,0 +1,39 @@
+name: CI
+
+# Status check (ruleset): CI / build
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yaml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/publish.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yaml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: ${{ vars.SKIP_CI != 'true' || github.event_name == 'workflow_dispatch' }}
+    name: build
+    runs-on: linm-org-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build Docker image (Postgres 18)
+        run: docker build --build-arg POSTGRES_VERSION=18 .

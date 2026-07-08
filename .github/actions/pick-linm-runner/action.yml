@@ -1,0 +1,40 @@
+name: Pick linm-org-hosted or ubuntu-latest
+description: >-
+  Probe org self-hosted runners via GitHub API. Output runner label for dynamic runs-on.
+  GitHub runs-on array requires ALL labels on one runner (AND) — not OR fallback.
+inputs:
+  org:
+    description: Org slug for runners API (default github.repository_owner)
+    required: false
+    default: ''
+  gh_token:
+    description: Token with org runners read (repository secret LINM_SOFT_READ_TOKEN)
+    required: true
+outputs:
+  runner:
+    description: linm-org-hosted when online, else ubuntu-latest
+    value: ${{ steps.pick.outputs.runner }}
+runs:
+  using: composite
+  steps:
+    - name: Pick runner
+      id: pick
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh_token }}
+        ORG_INPUT: ${{ inputs.org }}
+        REPO_OWNER: ${{ github.repository_owner }}
+      run: |
+        set -euo pipefail
+        ORG="${ORG_INPUT:-$REPO_OWNER}"
+        RUNNER="ubuntu-latest"
+        if [ -n "${GH_TOKEN:-}" ] && [ -n "${ORG}" ]; then
+          online="$(gh api "orgs/${ORG}/actions/runners?per_page=100" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --jq '[.runners[] | select(.status=="online") | .labels[].name] | join("\n")' 2>/dev/null || true)"
+          if echo "$online" | grep -qx 'linm-org-hosted'; then
+            RUNNER="linm-org-hosted"
+          fi
+        fi
+        echo "runner=${RUNNER}" >> "$GITHUB_OUTPUT"
+        echo "Picked runner: ${RUNNER} (org=${ORG})"
