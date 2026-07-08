@@ -29,12 +29,26 @@ if [ -z "$POSTGRES_PASSWORD" ]; then
   exit 1
 fi
 
-if [ -z "$S3_ENDPOINT" ]; then
-  aws_args=""
-else
-  aws_args="--endpoint-url $S3_ENDPOINT"
+if [ -z "$POSTGRES_PORT" ]; then
+  POSTGRES_PORT=5432
 fi
 
+if [ -z "$S3_PREFIX" ]; then
+  if [ -n "${S3_PATH:-}" ]; then
+    S3_PREFIX="$S3_PATH"
+  else
+    S3_PREFIX="backup"
+  fi
+fi
+
+if [ -n "$BACKUP_KEEP_DAYS" ]; then
+  case "$BACKUP_KEEP_DAYS" in
+    *[!0-9]*)
+      echo "BACKUP_KEEP_DAYS must be a positive integer." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 if [ -n "$S3_ACCESS_KEY_ID" ]; then
   export AWS_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID

@@ -15,7 +15,8 @@ ENV S3_ACCESS_KEY_ID=''
 ENV S3_SECRET_ACCESS_KEY=''
 ENV S3_BUCKET=''
 ENV S3_REGION='us-west-1'
-ENV S3_PATH='backup'
+ENV S3_PREFIX='backup'
+ENV S3_PATH=''
 ENV S3_ENDPOINT=''
 ENV S3_S3V4='no'
 ENV SCHEDULE=''
@@ -24,7 +25,12 @@ ENV BACKUP_KEEP_DAYS=''
 
 COPY src/run.sh run.sh
 COPY src/env.sh env.sh
+COPY src/s3.sh s3.sh
 COPY src/backup.sh backup.sh
 COPY src/restore.sh restore.sh
+COPY src/healthcheck.sh healthcheck.sh
+
+HEALTHCHECK --interval=1h --timeout=10s --start-period=10m \
+  CMD sh healthcheck.sh
 
 CMD ["sh", "run.sh"]

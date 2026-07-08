@@ -35,8 +35,12 @@ services:
 - The `SCHEDULE` variable determines backup frequency. See go-cron schedules documentation [here](http://godoc.org/github.com/robfig/cron#hdr-Predefined_schedules). Omit to run the backup immediately and then exit.
 - If `PASSPHRASE` is provided, the backup will be encrypted using GPG.
 - Run `docker exec <container name> sh backup.sh` to trigger a backup ad-hoc.
-- If `BACKUP_KEEP_DAYS` is set, backups older than this many days will be deleted from S3.
+- If `BACKUP_KEEP_DAYS` is set, backups older than this many days will be deleted from S3 (with full S3 pagination).
 - Set `S3_ENDPOINT` if you're using a non-AWS S3-compatible storage provider.
+- `S3_PREFIX` defaults to `backup`. The deprecated `S3_PATH` variable is still accepted as a fallback.
+- Backups are verified after upload (local and remote size are compared).
+- Concurrent backups are prevented with a file lock.
+- For production, prefer Docker secrets or mounted secret files over plain environment variables for credentials.
 
 ## Restore
 
@@ -48,9 +52,6 @@ services:
 ```sh
 docker exec <container name> sh restore.sh
 ```
-
-> [!NOTE]
-> If your bucket has more than a 1000 files, the latest may not be restored -- only one S3 `ls` command is used
 
 ### ... from specific backup
 
