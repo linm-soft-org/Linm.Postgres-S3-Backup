@@ -70,7 +70,7 @@ jobs:
 
   build-and-push-image:
     needs: [pick-runner, resolve-version]
-    name: build-and-push-image
+    name: push-image-postgres-${{ matrix.postgres }}
     runs-on: ${{ needs.pick-runner.outputs.runner }}
 
     strategy:
@@ -109,7 +109,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
+      - name: Build and push ghcr.io image tag ${{ matrix.postgres }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -125,7 +125,7 @@ jobs:
 
   create-release-tag:
     needs: [resolve-version, build-and-push-image]
-    name: create-release-tag
+    name: release-tag-v${{ needs.resolve-version.outputs.version }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
