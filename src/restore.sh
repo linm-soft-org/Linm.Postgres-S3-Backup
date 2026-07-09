@@ -13,7 +13,7 @@ else
 fi
 
 if [ $# -eq 1 ]; then
-  s3_key="${S3_PREFIX}/${POSTGRES_DATABASE}_$1${file_type}"
+  s3_key="${S3_PREFIX}/${BACKUP_NAME_PREFIX}${POSTGRES_DATABASE}_$1${file_type}"
 else
   echo "Finding latest backup..."
   s3_key=$(find_latest_backup_key)

@@ -22,6 +22,7 @@ services:
       S3_SECRET_ACCESS_KEY:
       S3_BUCKET:
       S3_PREFIX: backup
+      BACKUP_FILE_PREFIX: '' # optional — prefix in backup filename
       POSTGRES_HOST: postgres
       POSTGRES_DATABASE: postgres
       POSTGRES_USER: user

@@ -69,7 +69,8 @@ Biến thường dùng thêm:
 
 | Biến | Mặc định | Mô tả |
 |------|----------|--------|
-| `S3_PREFIX` | `backup` | Prefix object trên bucket |
+| `S3_PREFIX` | `backup` | Thư mục (folder) trên bucket — phần đầu của S3 key |
+| `BACKUP_FILE_PREFIX` | *(empty)* | Tiền tố **tên file** backup (xem [Backup file naming](#backup-file-naming)) |
 | `S3_ENDPOINT` | *(AWS)* | URL S3-compatible, vd. R2: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `S3_S3V4` | `no` | Đặt `yes` nếu provider yêu cầu signature v4 |
 | `SCHEDULE` | *(empty)* | Cron [go-cron](http://godoc.org/github.com/robfig/cron#hdr-Predefined_schedules); trống = backup **một lần** rồi thoát |
@@ -78,6 +79,48 @@ Biến thường dùng thêm:
 | `PGDUMP_EXTRA_OPTS` | *(empty)* | Thêm flag cho `pg_dump` |
 
 Template đầy đủ: [`template.env`](template.env).
+
+### Backup file naming
+
+Hai biến độc lập — **không nhầm** `S3_PREFIX` (folder trên bucket) với `BACKUP_FILE_PREFIX` (tiền tố tên file):
+
+| Biến | Vai trò | Ví dụ |
+|------|---------|--------|
+| `S3_PREFIX` | Folder trên bucket | `production-backup` |
+| `BACKUP_FILE_PREFIX` | Tiền tố tên file (tùy chọn) | `reva-prod` |
+| `POSTGRES_DATABASE` | Tên DB trong tên file | `railway` |
+
+**Pattern tên file** (timestamp UTC `YYYY-MM-DDTHH:MM:SS`):
+
+```text
+{S3_PREFIX}/{BACKUP_FILE_PREFIX}_{POSTGRES_DATABASE}_{timestamp}.dump
+```
+
+Nếu `BACKUP_FILE_PREFIX` trống → bỏ phần tiền tố + dấu `_` thừa:
+
+```text
+{S3_PREFIX}/{POSTGRES_DATABASE}_{timestamp}.dump
+```
+
+**Ví dụ** — bucket `linm-prod-backup`, `S3_PREFIX=production-backup`, `BACKUP_FILE_PREFIX=reva-prod`, `POSTGRES_DATABASE=railway`:
+
+```text
+s3://linm-prod-backup/production-backup/reva-prod_railway_2026-07-09T05:00:00.dump
+```
+
+Mã hóa GPG (`PASSPHRASE` set) → thêm hậu tố `.gpg`.
+
+**Restore:**
+
+```sh
+# Latest backup (tìm theo S3_PREFIX + BACKUP_FILE_PREFIX + POSTGRES_DATABASE)
+docker exec <container> sh restore.sh
+
+# Backup cụ thể — chỉ truyền phần timestamp (không gồm prefix/folder)
+docker exec <container> sh restore.sh 2026-07-09T05:00:00
+```
+
+**R2 lifecycle:** rule prefix nên khớp `S3_PREFIX/` (vd. `production-backup/`).
 
 ### 4. Chạy với Docker Compose (local / dev)
 
@@ -108,6 +151,7 @@ docker run -d --name postgres-s3-backup \
   -e S3_ACCESS_KEY_ID=... \
   -e S3_SECRET_ACCESS_KEY=... \
   -e S3_PREFIX=backup/ \
+  -e BACKUP_FILE_PREFIX=reva-prod \
   -e SCHEDULE='0 5,17 * * *' \
   ghcr.io/linm-soft-org/linm.postgres-s3-backup:18
 ```
@@ -132,6 +176,7 @@ docker run -d --name postgres-s3-backup \
 | `S3_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `S3_BUCKET` | tên bucket R2 |
 | `S3_PREFIX` | vd. `production-backup/` |
+| `BACKUP_FILE_PREFIX` | *(tùy chọn)* vd. `reva-prod` |
 | `SCHEDULE` | `0 5,17 * * *` (12:00 & 00:00 ICT) |
 
 Không public port. Sau deploy: **Restart** một lần để xem log backup; kiểm tra object trên R2 under `S3_PREFIX`.
@@ -164,6 +209,7 @@ services:
       S3_SECRET_ACCESS_KEY: secret
       S3_BUCKET: my-bucket
       S3_PREFIX: backup
+      BACKUP_FILE_PREFIX: reva-prod # optional
       POSTGRES_HOST: postgres
       POSTGRES_DATABASE: postgres
       POSTGRES_USER: user
@@ -178,6 +224,7 @@ services:
 - Backup ad-hoc: `docker exec <container> sh backup.sh`
 - `BACKUP_KEEP_DAYS`: xóa object S3 cũ (pagination đầy đủ).
 - `S3_PATH`: deprecated; dùng `S3_PREFIX`.
+- `BACKUP_FILE_PREFIX`: tiền tố tên file; restore/list tự khớp — xem [Backup file naming](#backup-file-naming).
 - Sau upload: so sánh size local vs remote; lock file chống backup song song.
 - Production: ưu tiên secrets / mounted files thay vì plain env cho credential.
 

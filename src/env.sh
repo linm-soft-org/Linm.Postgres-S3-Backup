@@ -40,6 +40,18 @@ if [ -z "$S3_PREFIX" ]; then
     S3_PREFIX="backup"
   fi
 fi
+# Normalize folder prefix (no leading/trailing slash)
+S3_PREFIX="${S3_PREFIX#/}"
+S3_PREFIX="${S3_PREFIX%/}"
+
+# Optional filename prefix before POSTGRES_DATABASE (e.g. reva-prod → reva-prod_railway_2026-01-01T....dump)
+if [ -n "${BACKUP_FILE_PREFIX:-}" ]; then
+  BACKUP_FILE_PREFIX="${BACKUP_FILE_PREFIX#/}"
+  BACKUP_FILE_PREFIX="${BACKUP_FILE_PREFIX%/}"
+  BACKUP_NAME_PREFIX="${BACKUP_FILE_PREFIX}_"
+else
+  BACKUP_NAME_PREFIX=""
+fi
 
 if [ -n "$BACKUP_KEEP_DAYS" ]; then
   case "$BACKUP_KEEP_DAYS" in

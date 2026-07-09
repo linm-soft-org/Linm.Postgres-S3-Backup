@@ -44,7 +44,7 @@ verify_s3_upload() {
 }
 
 find_latest_backup_key() {
-  search_prefix="${S3_PREFIX}/${POSTGRES_DATABASE}"
+  search_prefix="${S3_PREFIX}/${BACKUP_NAME_PREFIX}${POSTGRES_DATABASE}"
   latest_key=""
   latest_modified=""
   token=""
