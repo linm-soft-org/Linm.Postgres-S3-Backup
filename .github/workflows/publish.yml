@@ -76,10 +76,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - { postgres: 14 }
-          - { postgres: 15 }
-          - { postgres: 16 }
-          - { postgres: 17 }
+          # - { postgres: 14 }
+          # - { postgres: 15 }
+          # - { postgres: 16 }
+          # - { postgres: 17 }
           - { postgres: 18 }
 
     steps:
